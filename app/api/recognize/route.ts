@@ -2,9 +2,12 @@
 
 import { NextRequest } from "next/server";
 
-const ARK_ENDPOINT = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
-const MODEL_ID = "ep-20250921140145-v9tg9";
+const DEFAULT_ENDPOINT = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
+const DEFAULT_MODEL = "ep-20250921140145-v9tg9";
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+const getEndpoint = () => process.env.ARK_RECOGNIZE_ENDPOINT || DEFAULT_ENDPOINT;
+const getModel = () => process.env.ARK_RECOGNIZE_MODEL || DEFAULT_MODEL;
 
 export async function POST(request: NextRequest) {
   const apiKey = process.env.ARK_API_KEY;
@@ -40,7 +43,7 @@ export async function POST(request: NextRequest) {
     const dataUrl = `data:${mimeType};base64,${base64}`;
 
     const payload = {
-      model: MODEL_ID,
+      model: getModel(),
       messages: [
         {
           role: "user",
@@ -60,7 +63,7 @@ export async function POST(request: NextRequest) {
       ],
     };
 
-    const arkResponse = await fetch(ARK_ENDPOINT, {
+    const arkResponse = await fetch(getEndpoint(), {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -71,10 +74,35 @@ export async function POST(request: NextRequest) {
 
     const text = await arkResponse.text();
     if (!arkResponse.ok) {
-      return new Response(text || JSON.stringify({ error: "识别服务调用失败" }), {
-        status: arkResponse.status,
-        headers: { "Content-Type": "application/json" },
-      });
+      let errorPayload: unknown = null;
+      try {
+        errorPayload = JSON.parse(text);
+      } catch {
+        // ignore
+      }
+      const errorMessage =
+        (errorPayload &&
+          typeof errorPayload === "object" &&
+          "error" in errorPayload &&
+          (errorPayload as { error?: { message?: string } }).error?.message) ||
+        "识别服务调用失败";
+      const errorCode =
+        (errorPayload &&
+          typeof errorPayload === "object" &&
+          "error" in errorPayload &&
+          (errorPayload as { error?: { code?: string } }).error?.code) ||
+        undefined;
+      return new Response(
+        JSON.stringify({
+          error: errorMessage,
+          code: errorCode,
+          target: getEndpoint(),
+        }),
+        {
+          status: arkResponse.status,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     return new Response(text, {

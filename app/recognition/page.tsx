@@ -132,7 +132,27 @@ export default function RecognitionPage() {
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok || !payload) {
-        throw new Error((payload && payload.error) || "识别失败，请稍后重试");
+        let apiMessage: string | null = null;
+        if (payload && typeof payload === "object") {
+          if ("error" in payload && typeof (payload as { error?: string | { message?: string } }).error === "string") {
+            apiMessage = (payload as { error: string }).error;
+          } else if (
+            "error" in payload &&
+            typeof (payload as { error?: { message?: string } }).error === "object" &&
+            (payload as { error?: { message?: string } }).error?.message
+          ) {
+            apiMessage = (payload as { error?: { message?: string } }).error?.message || null;
+          } else {
+            apiMessage = JSON.stringify(payload);
+          }
+          if ("code" in payload && typeof payload.code === "string") {
+            apiMessage = `${apiMessage ?? ""}\n(code: ${payload.code})`;
+          }
+          if ("target" in payload && typeof payload.target === "string") {
+            apiMessage = `${apiMessage ?? ""}\nendpoint: ${payload.target}`;
+          }
+        }
+        throw new Error(apiMessage || "识别失败，请稍后重试");
       }
       setRawJson(JSON.stringify(payload, null, 2));
       const summary = parseSummary(payload);
